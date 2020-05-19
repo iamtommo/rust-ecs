@@ -29,9 +29,10 @@ pub(crate) struct ArchetypeStorage {
 
 impl ArchetypeStorage {
     pub(crate) fn create(archetype_id: ArchetypeId, archetype_size: usize) -> ArchetypeStorage {
-        let data: Vec<u8> = Vec::new();
+        const MAX_ENTRIES: usize = 10000;
+        let data: Vec<u8> = Vec::with_capacity(MAX_ENTRIES * archetype_size);
         let mut free_indices: LinkedList<usize> = LinkedList::new();
-        for i in 0..10000 {
+        for i in 0..MAX_ENTRIES {
             free_indices.push_back(i);
         }
 
@@ -43,13 +44,17 @@ impl ArchetypeStorage {
             data
         }
     }
+    pub(crate) fn alloc_entity_index(&mut self, entity: Entity) -> usize {
+        let index = self.free_indices.pop_front().unwrap();
+        self.entity_indices.insert(entity, index);
+        return index;
+    }
 }
 
 pub struct ArchetypeManager {
     pub(crate) entity_archetypes: HashMap<Entity, ArchetypeId>,
     pub(crate) archetypes: Vec<Archetype>,
     pub(crate) archetype_index_seq: usize,
-    pub(crate) storage: HashMap<ArchetypeId, ArchetypeStorage>
 }
 
 impl Default for ArchetypeManager {
@@ -59,8 +64,7 @@ impl Default for ArchetypeManager {
             archetypes: vec![Archetype {
                 component_types: vec![TypeId::of::<i32>()],
                 component_sizes: vec![std::mem::size_of::<i32>()] }],
-            archetype_index_seq: 1, // begin at 1 after DEFAULT_ARCHETYPE,
-            storage: HashMap::new()
+            archetype_index_seq: 1 // begin at 1 after DEFAULT_ARCHETYPE
         }
     }
 }
@@ -89,18 +93,6 @@ impl ArchetypeManager {
             }
             return components.iter().all(|c| arch.component_types.contains(c));
         });
-    }
-
-    /// register a new archetype, returns the unique archetype id
-    pub fn register_archetype(&mut self, archetype: Archetype) -> ArchetypeId {
-        // create storage
-        let archetype_id = ArchetypeId { index: self.archetype_index_seq };
-        let archetype_size = (&archetype).component_sizes.iter().sum();
-        self.storage.insert(archetype_id, ArchetypeStorage::create(archetype_id, archetype_size));
-        // store & increment index counter
-        self.archetypes.push(archetype);
-        self.archetype_index_seq += 1;
-        return archetype_id;
     }
 
     pub fn set_entity_archetype(&mut self, entity: Entity, archetype_id: ArchetypeId) {

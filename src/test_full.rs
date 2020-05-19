@@ -13,6 +13,6 @@ fn test_add_get_component() {
     let mut uni = Universe::new();
     let entity = uni.create_entity();
     let position = Position { value: 1337f32 };
-    uni.add_component(entity, position);
+    uni.add_component_data(entity, position);
     //let position2 = uni.get_component()
 }

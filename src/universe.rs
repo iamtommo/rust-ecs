@@ -2,7 +2,7 @@ use std::any::TypeId;
 use std::collections::{HashMap, LinkedList};
 use std::mem;
 
-use crate::archetype::{Archetype, ArchetypeManager, ArchetypeStorage, DEFAULT_ARCHETYPE};
+use crate::archetype::{Archetype, ArchetypeManager, ArchetypeStorage, DEFAULT_ARCHETYPE, ArchetypeId};
 use crate::cmd::{CmdChain, CmdCreateEntity};
 use crate::component::Component;
 use crate::entity::Entity;
@@ -11,7 +11,8 @@ use crate::entity::Entity;
 pub struct Universe {
     pub(crate) free_entity_indices: LinkedList<u64>,
     pub(crate) entity_versions: HashMap<u64, u64>,
-    pub(crate) archetype_manager: ArchetypeManager
+    pub(crate) archetype_manager: ArchetypeManager,
+    pub(crate) storage: HashMap<ArchetypeId, ArchetypeStorage>
 }
 
 impl Universe {
@@ -25,7 +26,8 @@ impl Universe {
         Universe {
             free_entity_indices,
             entity_versions,
-            archetype_manager: ArchetypeManager::default()
+            archetype_manager: ArchetypeManager::default(),
+            storage: HashMap::new()
         }
     }
 
@@ -75,8 +77,17 @@ impl Universe {
                     component_types: vec![component_type_id],
                     component_sizes: vec![mem::size_of::<T>()]
                 };
-                let archetype_id = self.archetype_manager.register_archetype(archetype);
+                // create storage
+                let archetype_id = ArchetypeId { index: self.archetype_manager.archetype_index_seq };
+                let archetype_size = archetype.component_sizes.iter().sum();
+                let mut archetype_storage = ArchetypeStorage::create(archetype_id, archetype_size);
+                // store entity
                 self.archetype_manager.set_entity_archetype(entity, archetype_id);
+                archetype_storage.alloc_entity_index(entity);
+                self.storage.insert(archetype_id, archetype_storage);
+                // update archetype manager
+                self.archetype_manager.archetypes.push(archetype);
+                self.archetype_manager.archetype_index_seq += 1;
             }
         }
        /* if entity_archetype.is_some() {
@@ -119,8 +130,7 @@ impl Universe {
         }
         let component_type_index = archetype.component_types.iter()
             .position(|c| *c == component_type_id).unwrap();
-        let mut archetype_storage: &mut ArchetypeStorage = self.archetype_manager.storage
-            .get_mut(&archetype_id).unwrap();
+        let mut archetype_storage: &mut ArchetypeStorage = self.storage.get_mut(&archetype_id).unwrap();
 
         let data_ptr: *mut T = compute_ptr_to_component_data(entity, component_type_index,
                                                                    archetype, &mut archetype_storage) as *mut T;
@@ -141,7 +151,7 @@ impl Universe {
         }
         let component_type_index = archetype.component_types.iter()
             .position(|c| *c == component_type_id).unwrap();
-        let mut archetype_storage: &mut ArchetypeStorage = (&mut self.archetype_manager).storage.get_mut(&archetype_id).unwrap();
+        let mut archetype_storage: &mut ArchetypeStorage = self.storage.get_mut(&archetype_id).unwrap();
 
         let data_ptr: *const u8 = compute_ptr_to_component_data(entity, component_type_index,
                                                           archetype, &mut archetype_storage) as *const u8;
@@ -149,6 +159,17 @@ impl Universe {
         return component;
     }
 
+    // register a new archetype, returns the unique archetype id
+    /*pub(crate) fn register_archetype(&mut self, archetype: Archetype) -> ArchetypeId {
+        // create storage
+        let archetype_id = ArchetypeId { index: self.archetype_manager.archetype_index_seq };
+        let archetype_size = (&archetype).component_sizes.iter().sum();
+        self.storage.insert(archetype_id, ArchetypeStorage::create(archetype_id, archetype_size));
+        // store & increment index counter
+        self.archetype_manager.archetypes.push(archetype);
+        self.archetype_manager.archetype_index_seq += 1;
+        return archetype_id;
+    }*/
 }
 
 fn compute_ptr_to_component_data(entity: Entity, component_type_index: usize,

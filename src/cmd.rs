@@ -2,6 +2,7 @@ use std::collections::LinkedList;
 use crate::entity::Entity;
 use std::error::Error;
 use crate::universe::Universe;
+use crate::component::Component;
 
 /// ordered cmd buffer for batching entity operations (minimize chunk relayouts)
 pub struct CmdChain {

@@ -1,11 +1,15 @@
 use std::collections::{LinkedList, HashMap};
 use crate::entity::Entity;
 use crate::cmd::{CmdChain, CmdCreateEntity};
+use crate::archetype::{Archetype, ArchetypeManager, DEFAULT_ARCHETYPE};
+use crate::component::Component;
+use std::any::TypeId;
 
 /// top level unit of isolation
 pub struct Universe {
     pub(crate) free_entity_indices: LinkedList<u64>,
-    pub(crate) entity_versions: HashMap<u64, u64>
+    pub(crate) entity_versions: HashMap<u64, u64>,
+    pub archetype_manager: ArchetypeManager
 }
 
 impl Universe {
@@ -18,7 +22,8 @@ impl Universe {
         }
         Universe {
             free_entity_indices,
-            entity_versions
+            entity_versions,
+            archetype_manager: ArchetypeManager::default()
         }
     }
 
@@ -51,30 +56,51 @@ impl Universe {
         cmds.destroy_entity(entity);
         self.exec(&mut cmds);
     }
-}
 
+    pub fn add_component<T: Component + 'static>(&mut self, entity: Entity, component: T) {
+        if !self.is_valid(entity) {
+            panic!("ecs: failed to add component to invalid entity {}", entity);
+        }
+        let component_type_id = TypeId::of::<T>();
+        let entity_archetype = self.archetype_manager.get_archetype_id(entity);
+        if entity_archetype == DEFAULT_ARCHETYPE {
+            let existing_archetype = self.archetype_manager.find_archetype(vec![component_type_id]);
+            if existing_archetype.is_some() {
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+            } else {
+                // fresh new archetype
+                let archetype = Archetype { component_types: vec![component_type_id] };
+                let archetype_id = self.archetype_manager.register_archetype(archetype);
+                self.archetype_manager.set_entity_archetype(entity, archetype_id);
+            }
+        }
+       /* if entity_archetype.is_some() {
+            let archetype = self.archetype_manager.get_archetype(entity_archetype).unwrap();
+            if archetype.component_types.contains(&component_type_id) {
+                panic!("ecs: component already exists on entity {}", entity);
+            }
+        } else {
 
-    #[test]
-    fn create_entity() {
-        let entity = Universe::new().create_entity();
-        assert_eq!(entity.id, 1);
-        assert_eq!(entity.version, 1);
+        }*/
     }
 
-    #[test]
-    fn create_destroy_reuses_index_increments_version() {
-        let mut u = Universe::new();
-        let entity1 = u.create_entity();
-        assert_eq!(u.is_valid(entity1), true);
-
-        u.destroy_entity(entity1);
-        let entity2 = u.create_entity();
-        assert_eq!(entity2.id, entity1.id);
-        assert_eq!(entity2.version, entity1.version + 1)
+    pub fn has_component<T: Component + 'static>(&mut self, entity: Entity) -> bool {
+        if !self.is_valid(entity) {
+            panic!("ecs: failed to check has component for invalid entity {}", entity);
+        }
+        let component_type_id = TypeId::of::<T>();
+        let entity_archetype_id = self.archetype_manager.get_archetype_id(entity);
+        if entity_archetype_id == DEFAULT_ARCHETYPE {
+            return false;
+        }
+        return self.archetype_manager.get_archetype(entity_archetype_id).unwrap()
+            .component_types.contains(&component_type_id);
     }
 
+    /*pub fn get_component<T: Component + 'static>(&mut self, entity: Entity) -> T {
+        if !self.is_valid(entity) {
+            panic!("ecs: failed to get component {:?} for invalid entity {}", T, entity);
+        }
+
+    }*/
 }

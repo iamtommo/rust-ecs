@@ -1,15 +1,17 @@
-use std::collections::{LinkedList, HashMap};
-use crate::entity::Entity;
-use crate::cmd::{CmdChain, CmdCreateEntity};
-use crate::archetype::{Archetype, ArchetypeManager, DEFAULT_ARCHETYPE};
-use crate::component::Component;
 use std::any::TypeId;
+use std::collections::{HashMap, LinkedList};
+use std::mem;
+
+use crate::archetype::{Archetype, ArchetypeManager, ArchetypeStorage, DEFAULT_ARCHETYPE};
+use crate::cmd::{CmdChain, CmdCreateEntity};
+use crate::component::Component;
+use crate::entity::Entity;
 
 /// top level unit of isolation
 pub struct Universe {
     pub(crate) free_entity_indices: LinkedList<u64>,
     pub(crate) entity_versions: HashMap<u64, u64>,
-    pub archetype_manager: ArchetypeManager
+    pub(crate) archetype_manager: ArchetypeManager
 }
 
 impl Universe {
@@ -57,9 +59,9 @@ impl Universe {
         self.exec(&mut cmds);
     }
 
-    pub fn add_component<T: Component + 'static>(&mut self, entity: Entity, component: T) {
+    pub fn add_component<T: Component + 'static>(&mut self, entity: Entity) {
         if !self.is_valid(entity) {
-            panic!("ecs: failed to add component to invalid entity {}", entity);
+            panic!("ecs: add_component failed: invalid entity {}", entity);
         }
         let component_type_id = TypeId::of::<T>();
         let entity_archetype = self.archetype_manager.get_archetype_id(entity);
@@ -69,7 +71,10 @@ impl Universe {
 
             } else {
                 // fresh new archetype
-                let archetype = Archetype { component_types: vec![component_type_id] };
+                let archetype = Archetype {
+                    component_types: vec![component_type_id],
+                    component_sizes: vec![mem::size_of::<T>()]
+                };
                 let archetype_id = self.archetype_manager.register_archetype(archetype);
                 self.archetype_manager.set_entity_archetype(entity, archetype_id);
             }
@@ -84,9 +89,14 @@ impl Universe {
         }*/
     }
 
+    pub fn add_component_data<T: Component + 'static>(&mut self, entity: Entity, component: T) {
+        self.add_component::<T>(entity);
+        self.set_component::<T>(entity, component);
+    }
+
     pub fn has_component<T: Component + 'static>(&mut self, entity: Entity) -> bool {
         if !self.is_valid(entity) {
-            panic!("ecs: failed to check has component for invalid entity {}", entity);
+            panic!("ecs: has_component failed: invalid entity {}", entity);
         }
         let component_type_id = TypeId::of::<T>();
         let entity_archetype_id = self.archetype_manager.get_archetype_id(entity);
@@ -97,10 +107,62 @@ impl Universe {
             .component_types.contains(&component_type_id);
     }
 
-    /*pub fn get_component<T: Component + 'static>(&mut self, entity: Entity) -> T {
+    pub fn set_component<T: Component + 'static>(&mut self, entity: Entity, component: T) {
         if !self.is_valid(entity) {
-            panic!("ecs: failed to get component {:?} for invalid entity {}", T, entity);
+            panic!("ecs: set_component failed: invalid entity {}", entity);
         }
+        let archetype_id = self.archetype_manager.get_archetype_id(entity);
+        let archetype = self.archetype_manager.get_archetype(archetype_id).unwrap();
+        let component_type_id = TypeId::of::<T>();
+        if !archetype.component_types.contains(&component_type_id) {
+            panic!("ecs: set_component failed: entity has no such component");
+        }
+        let component_type_index = archetype.component_types.iter()
+            .position(|c| *c == component_type_id).unwrap();
+        let mut archetype_storage: &mut ArchetypeStorage = self.archetype_manager.storage
+            .get_mut(&archetype_id).unwrap();
 
-    }*/
+        let data_ptr: *mut T = compute_ptr_to_component_data(entity, component_type_index,
+                                                                   archetype, &mut archetype_storage) as *mut T;
+        unsafe {
+            std::ptr::write_unaligned::<T>(data_ptr, component);
+        }
+    }
+
+    pub fn get_component<T: Component + 'static>(&mut self, entity: Entity) -> T {
+        if !self.is_valid(entity) {
+            panic!("ecs: get_component failed: invalid entity {}", entity);
+        }
+        let archetype_id = (&mut self.archetype_manager).get_archetype_id(entity);
+        let archetype = (&mut self.archetype_manager).get_archetype(archetype_id).unwrap();
+        let component_type_id = TypeId::of::<T>();
+        if !archetype.component_types.contains(&component_type_id) {
+            panic!("ecs: get_component failed: entity has no such component");
+        }
+        let component_type_index = archetype.component_types.iter()
+            .position(|c| *c == component_type_id).unwrap();
+        let mut archetype_storage: &mut ArchetypeStorage = (&mut self.archetype_manager).storage.get_mut(&archetype_id).unwrap();
+
+        let data_ptr: *const u8 = compute_ptr_to_component_data(entity, component_type_index,
+                                                          archetype, &mut archetype_storage) as *const u8;
+        let component: T = unsafe { std::ptr::read_unaligned::<T>(data_ptr as *const _) };
+        return component;
+    }
+
+}
+
+fn compute_ptr_to_component_data(entity: Entity, component_type_index: usize,
+                                     archetype: &Archetype, storage: &mut ArchetypeStorage) -> *mut u8 {
+    let archetype_total_size: usize = archetype.component_sizes.iter().sum();
+    // compute base pointer into archetype storage data
+    let entity_data_index: usize = storage.entity_indices[&entity];
+    // compute offset into archetype component data
+    let mut component_data_offset: usize = 0;
+    for i in 0..component_type_index as usize {
+        component_data_offset += archetype.component_sizes[i]
+    }
+    let data_offset: isize = ((entity_data_index * archetype_total_size) + component_data_offset) as isize;
+    unsafe {
+        return storage.data.as_mut_ptr().offset(data_offset) as *mut u8;
+    }
 }

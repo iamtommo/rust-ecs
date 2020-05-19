@@ -57,7 +57,7 @@ pub struct CmdDestroyEntity {
 impl Cmd for CmdDestroyEntity {
     fn exec(&self, universe: &mut Universe, state: &mut CmdChainState) {
         // increment version to invalidate previous entity handles
-        let mut version = universe.entity_versions.get_mut(&self.entity.id).unwrap();
+        let version = universe.entity_versions.get_mut(&self.entity.id).unwrap();
         *version += 1u64;
         universe.free_entity_indices.push_front(self.entity.id);
     }

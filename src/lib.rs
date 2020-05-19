@@ -3,7 +3,8 @@ pub mod universe;
 pub mod entity;
 pub mod cmd;
 pub mod archetype;
-pub mod storage;
+pub mod query;
+pub mod system;
 
 #[cfg(test)]
 mod test_full;
@@ -11,18 +12,5 @@ mod test_full;
 mod test_archetype;
 #[cfg(test)]
 mod test_universe;
-
-/*
-pub struct ComponentMeta {
-
-}
-*/
-
-/*pub struct ArchetypeId {
-    pub world_id: i32,
-    pub archetype_index: i32
-}*/
-
-/*pub struct ArchetypeDescription {
-    pub components: Vec<(ComponentTypeId, ComponentMeta)>
-}*/
+#[cfg(test)]
+mod test_query;

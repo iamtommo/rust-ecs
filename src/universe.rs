@@ -15,7 +15,8 @@ pub struct Universe {
     pub(crate) entity_versions: HashMap<u64, u64>,
     pub(crate) archetype_manager: ArchetypeManager,
     pub(crate) storage: HashMap<ArchetypeId, ArchetypeStorage>,
-    pub(crate) systems: HashMap<TypeId, Box<dyn Any>>
+    pub(crate) systems: HashMap<TypeId, Box<dyn Any>>,
+    pub(crate) singletons: HashMap<TypeId, Box<dyn Any>>
 }
 
 impl Universe {
@@ -31,7 +32,8 @@ impl Universe {
             entity_versions,
             archetype_manager: ArchetypeManager::default(),
             storage: HashMap::new(),
-            systems: HashMap::new()
+            systems: HashMap::new(),
+            singletons: HashMap::new()
         }
     }
 
@@ -203,6 +205,25 @@ impl Universe {
             }
         }
         return results;
+    }
+
+    pub fn set_singleton<T: Component + Any + 'static>(&mut self, component: T) -> &T {
+        let type_id = TypeId::of::<T>();
+        if self.singletons.contains_key(&type_id) {
+            self.singletons.remove(&type_id);
+        }
+        let singleton = Box::new(component);
+        self.singletons.insert(type_id, singleton);
+        return self.get_singleton::<T>();
+    }
+
+    pub fn get_singleton<T: Component + Any + 'static>(&self) -> &T {
+        let singleton = self.singletons.get(&TypeId::of::<T>()).unwrap();
+        return singleton.as_ref().downcast_ref::<T>().unwrap();
+    }
+
+    pub fn has_singleton<T: Component + Any + 'static>(&self) -> bool {
+        return self.singletons.contains_key(&TypeId::of::<T>());
     }
 
 }

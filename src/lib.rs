@@ -5,6 +5,7 @@ pub mod cmd;
 pub mod archetype;
 pub mod query;
 pub mod system;
+pub mod singleton;
 
 #[cfg(test)]
 mod test_full;

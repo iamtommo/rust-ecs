@@ -41,21 +41,26 @@ impl Universe {
         return entity.id > 0 && entity.version == *self.entity_versions.get(&entity.id).unwrap_or(&0u64);
     }
 
-    pub fn create_system<T: System + Any + Default + 'static>(&mut self) -> &T {
+    pub fn create_system<T: System + Any + Default + 'static>(&mut self) -> &mut T {
         let type_id = TypeId::of::<T>();
         let sys = Box::new(T::default());
         self.systems.insert(type_id, sys);
         return self.get_system::<T>();
     }
 
-    pub fn get_system<T: System + Any + 'static>(&self) -> &T {
-        let sys = self.systems.get(&TypeId::of::<T>()).unwrap();
-        return sys.as_ref().downcast_ref::<T>().unwrap();
+    pub fn get_system<T: System + Any + 'static>(&mut self) -> &mut T {
+        let sys = self.systems.get_mut(&TypeId::of::<T>()).unwrap();
+        return sys.as_mut().downcast_mut::<T>().unwrap();
     }
 
     pub fn has_system<T: System + Any + 'static>(&self) -> bool {
         return self.systems.contains_key(&TypeId::of::<T>());
     }
+
+    /*pub fn update_system<T: System + 'static>(&mut self) {
+        let system: &mut T = self.get_system::<T>();
+        system.update(self);
+    }*/
 
     /// execute cmd chain
     /// mutates chain so state is retained and available for reading afterwards

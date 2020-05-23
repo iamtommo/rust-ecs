@@ -1,4 +1,4 @@
-use std::any::TypeId;
+use std::any::{TypeId, Any};
 use std::collections::{HashMap, LinkedList};
 use std::mem;
 
@@ -6,13 +6,16 @@ use crate::archetype::{Archetype, ArchetypeManager, ArchetypeStorage, DEFAULT_AR
 use crate::cmd::{CmdChain, CmdCreateEntity};
 use crate::component::Component;
 use crate::entity::Entity;
+use crate::query::{EntityData, EntityQuery};
+use crate::system::System;
 
 /// top level unit of isolation
 pub struct Universe {
     pub(crate) free_entity_indices: LinkedList<u64>,
     pub(crate) entity_versions: HashMap<u64, u64>,
     pub(crate) archetype_manager: ArchetypeManager,
-    pub(crate) storage: HashMap<ArchetypeId, ArchetypeStorage>
+    pub(crate) storage: HashMap<ArchetypeId, ArchetypeStorage>,
+    pub(crate) systems: HashMap<TypeId, Box<dyn Any>>
 }
 
 impl Universe {
@@ -27,12 +30,29 @@ impl Universe {
             free_entity_indices,
             entity_versions,
             archetype_manager: ArchetypeManager::default(),
-            storage: HashMap::new()
+            storage: HashMap::new(),
+            systems: HashMap::new()
         }
     }
 
     pub fn is_valid(&self, entity: Entity) -> bool {
         return entity.id > 0 && entity.version == *self.entity_versions.get(&entity.id).unwrap_or(&0u64);
+    }
+
+    pub fn create_system<T: System + Any + Default + 'static>(&mut self) -> &T {
+        let type_id = TypeId::of::<T>();
+        let sys = Box::new(T::default());
+        self.systems.insert(type_id, sys);
+        return self.get_system::<T>();
+    }
+
+    pub fn get_system<T: System + Any + 'static>(&self) -> &T {
+        let sys = self.systems.get(&TypeId::of::<T>()).unwrap();
+        return sys.as_ref().downcast_ref::<T>().unwrap();
+    }
+
+    pub fn has_system<T: System + Any + 'static>(&self) -> bool {
+        return self.systems.contains_key(&TypeId::of::<T>());
     }
 
     /// execute cmd chain
@@ -135,7 +155,7 @@ impl Universe {
         let data_ptr: *mut T = compute_ptr_to_component_data(entity, component_type_index,
                                                                    archetype, &mut archetype_storage) as *mut T;
         unsafe {
-            std::ptr::write_unaligned::<T>(data_ptr, component);
+            std::ptr::write::<T>(data_ptr, component);
         }
     }
 
@@ -155,7 +175,7 @@ impl Universe {
 
         let data_ptr: *const u8 = compute_ptr_to_component_data(entity, component_type_index,
                                                           archetype, &mut archetype_storage) as *const u8;
-        let component: T = unsafe { std::ptr::read_unaligned::<T>(data_ptr as *const _) };
+        let component: T = unsafe { std::ptr::read::<T>(data_ptr as *const _) };
         return component;
     }
 
@@ -170,6 +190,21 @@ impl Universe {
         self.archetype_manager.archetype_index_seq += 1;
         return archetype_id;
     }*/
+
+    pub fn get_entities(&self, query: EntityQuery) -> EntityData {
+        let mut results = EntityData { num_entities: 0 };
+        'outer: for i in 0..self.archetype_manager.archetypes.len() {
+            let archetype = &self.archetype_manager.archetypes[i];
+            for required_component_type in &query.all {
+                if !archetype.component_types.contains(&required_component_type) {
+                    // skip archetype
+                    continue 'outer;
+                }
+            }
+        }
+        return results;
+    }
+
 }
 
 fn compute_ptr_to_component_data(entity: Entity, component_type_index: usize,

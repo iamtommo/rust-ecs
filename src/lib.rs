@@ -14,3 +14,5 @@ mod test_archetype;
 mod test_universe;
 #[cfg(test)]
 mod test_query;
+#[cfg(test)]
+mod test_systems;

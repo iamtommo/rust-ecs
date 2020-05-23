@@ -5,3 +5,7 @@ pub struct EntityQuery {
     pub none: Vec<TypeId>,
     pub any: Vec<TypeId>
 }
+
+pub struct EntityData {
+    pub num_entities: usize
+}
